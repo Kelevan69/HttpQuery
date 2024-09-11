@@ -1,37 +1,19 @@
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
+import java.io.*;
 import java.net.ServerSocket;
 import java.net.Socket;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 
 public class Server {
 
-    // Порт, на котором будет запущен сервер
-    private final int port;
-
-    // Пул потоков для обработки подключений
-    private final ExecutorService threadPool;
-
-    public Server(int port) {
-        this.port = port;
-        this.threadPool = Executors.newFixedThreadPool(64);
-    }
-
-    // Метод для запуска сервера
     public void start() {
-        try (ServerSocket serverSocket = new ServerSocket(port)) {
-            System.out.println("Сервер запущен на порту " + port);
+        try (ServerSocket serverSocket = new ServerSocket(8080)) {
+            System.out.println("Сервер запущен на порту 8080");
 
             while (true) {
                 Socket clientSocket = serverSocket.accept();
-                System.out.println("Новое подключение: " + clientSocket.getInetAddress());
-                threadPool.submit(() -> handleClient(clientSocket));
+                handleClient(clientSocket);
             }
-
         } catch (IOException e) {
-            System.err.println("Ошибка при запуске сервера: " + e.getMessage());
+            e.printStackTrace();
         }
     }
 
@@ -39,33 +21,35 @@ public class Server {
         try (InputStream input = clientSocket.getInputStream();
              OutputStream output = clientSocket.getOutputStream()) {
 
-            byte[] buffer = new byte[1024];
-            int bytesRead;
+            BufferedReader reader = new BufferedReader(new InputStreamReader(input));
+            String requestLine = reader.readLine();
 
-            while ((bytesRead = input.read(buffer)) != -1) {
-                output.write(buffer, 0, bytesRead);
+            if (requestLine != null && !requestLine.isEmpty()) {
+                // Извлекаем URL из строки запроса (например, "GET /messages?last=10 HTTP/1.1")
+                String[] requestParts = requestLine.split(" ");
+                String url = requestParts[1];
+
+                Request request = new Request(url);
+
+                if (request.getPath().equals("/messages")) {
+                    String last = request.getQueryParam("last");
+
+                    output.write("HTTP/1.1 200 OK\r\n\r\n".getBytes());
+                    output.write(("Last message: " + last).getBytes());
+                } else {
+                    output.write("HTTP/1.1 404 Not Found\r\n\r\n".getBytes());
+                }
+
                 output.flush();
             }
 
         } catch (IOException e) {
-            System.err.println("Ошибка при обработке клиента: " + e.getMessage());
-        } finally {
-            try {
-                clientSocket.close();
-                System.out.println("Соединение закрыто: " + clientSocket.getInetAddress());
-            } catch (IOException e) {
-                System.err.println("Ошибка при закрытии соединения: " + e.getMessage());
-            }
+            e.printStackTrace();
         }
     }
 
-    public void stop() {
-        threadPool.shutdown();
-        System.out.println("Сервер остановлен.");
-    }
-
     public static void main(String[] args) {
-        Server server = new Server(8080);
+        Server server = new Server();
         server.start();
     }
 }
